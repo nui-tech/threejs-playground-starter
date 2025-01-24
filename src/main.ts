@@ -2,8 +2,11 @@ import "./style.css";
 
 import CameraControls from "camera-controls";
 import * as THREE from "three";
+// @ts-ignore
 import Stats from "three/addons/libs/stats.module.js";
+// @ts-ignore
 import * as BufferGeometryUtils from "three/addons/utils/BufferGeometryUtils.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 CameraControls.install({ THREE: THREE });
 
@@ -39,6 +42,10 @@ const cameraControls = new CameraControls(camera, renderer.domElement);
 cameraControls.mouseButtons.right = CameraControls.ACTION.OFFSET;
 cameraControls.dollyTo(1000);
 
+// add atmosphere light
+const light = new THREE.AmbientLight(0xffffff, 0.5);
+scene.add(light);
+
 const box = new THREE.Mesh(
   new THREE.BoxGeometry(),
   new THREE.MeshBasicMaterial({
@@ -57,25 +64,37 @@ renderer.render(scene, camera);
  * **************  Debugger ******************
  *
  * */
-
-const sphere = new THREE.Mesh(
-  new THREE.SphereGeometry(0.1, 32, 32),
-  new THREE.MeshBasicMaterial({ color: 0xff0000 })
-);
-scene.add(sphere);
-
-const axesHelper = new THREE.AxesHelper(5);
-scene.add(axesHelper);
-
-const gridHelper = new THREE.GridHelper(5000, 100);
-scene.add(gridHelper);
-
 const stats = Stats();
-document.body.appendChild(stats.dom);
 const guiStatsEl = document.createElement("div");
-guiStatsEl.style.position = "absolute";
-guiStatsEl.style.top = "0";
-guiStatsEl.style.right = "50px";
+const sliderContainer = document.createElement("div");
+
+function addDebugger() {
+  const sphere = new THREE.Mesh(
+    new THREE.SphereGeometry(0.1, 32, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff0000 })
+  );
+  scene.add(sphere);
+
+  const axesHelper = new THREE.AxesHelper(5);
+  scene.add(axesHelper);
+
+  const gridHelper = new THREE.GridHelper(5000, 100);
+  scene.add(gridHelper);
+
+  document.body.appendChild(stats.dom);
+
+  guiStatsEl.style.position = "absolute";
+  guiStatsEl.style.top = "0";
+  guiStatsEl.style.right = "50px";
+
+  
+  sliderContainer.id = "sliderContainer";
+  sliderContainer.style.position = "absolute";
+  sliderContainer.style.top = "250px";
+  sliderContainer.style.display = "flex";
+  sliderContainer.style.flexDirection = "column";
+  document.body.appendChild(sliderContainer);
+}
 
 function getGeometryByteLength(geometry: any) {
   let total = 0;
@@ -107,12 +126,16 @@ function formatBytes(bytes: any, decimals: any) {
  *
  * */
 
+const Y_OFFSET = 750;
+const X_ROTATION_OFFSET = 270;
+const OPACITY = 0.1;
+
 function initInstancedMesh(
   name: string,
   myData: JSONData[] = [],
-  color: string = "red"
+  color: string = "red",
+  opacity: number = OPACITY
 ) {
-
   // return if scene already has the mesh with the same name
   if (scene.children.find((child) => child.name === name)) {
     console.log("nlog: mesh already exists");
@@ -122,16 +145,20 @@ function initInstancedMesh(
   const matrix = new THREE.Matrix4();
 
   const geometry = new THREE.SphereGeometry(1, 4, 4);
-  const material = new THREE.MeshBasicMaterial({ color: color });
+  const material = new THREE.MeshBasicMaterial({
+    color: color,
+    opacity: opacity,
+    transparent: true,
+  });
   const mesh = new THREE.InstancedMesh(geometry, material, myData.length);
 
   for (let i = 0; i < myData.length; i++) {
-    matrix.setPosition(myData[i].X, myData[i].Y, myData[i].Z - 580);
+    matrix.setPosition(myData[i].X, myData[i].Y, myData[i].Z - Y_OFFSET);
     mesh.setMatrixAt(i, matrix);
   }
 
   // rotate the mesh 240 degrees
-  mesh.rotation.x = THREE.MathUtils.degToRad(270);
+  mesh.rotation.x = THREE.MathUtils.degToRad(X_ROTATION_OFFSET);
   mesh.name = name;
 
   scene.add(mesh);
@@ -215,6 +242,41 @@ function sbSolution() {
   console.log("nlog: added");
 }
 
+function loadGltf() {
+  const MODEL_SCALE = 1;
+  const y_offset = -225;
+  const loader = new GLTFLoader();
+  loader.load(
+    "../public/terrains/All.gltf",
+    (gltf) => {
+      gltf.scene.position.set(0, y_offset, 0);
+      gltf.scene.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+      scene.add(gltf.scene);
+      renderer.render(scene, camera);
+      console.log("nlog: loaded gltf");
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+    }
+  );
+
+  loader.load(
+    "../public/terrains/Cones and text.gltf",
+    (gltf) => {
+      gltf.scene.position.set(0, y_offset, 0);
+      gltf.scene.scale.set(MODEL_SCALE, MODEL_SCALE, MODEL_SCALE);
+      scene.add(gltf.scene);
+      renderer.render(scene, camera);
+      console.log("nlog: loaded gltf");
+    },
+    undefined,
+    (error) => {
+      console.error(error);
+    }
+  );
+}
+
 function addButtons() {
   const buttonContainer = document.createElement("div");
   buttonContainer.style.position = "absolute";
@@ -236,6 +298,7 @@ function addButtons() {
   button2.onclick = () => {
     initInstancedMesh("mesh2", data2, "green");
   };
+  addSliders("mesh2");
 
   const button3 = document.createElement("button");
   button3.innerHTML =
@@ -243,12 +306,14 @@ function addButtons() {
   button3.onclick = () => {
     initInstancedMesh("mesh3", data3, "yellow");
   };
+  addSliders("mesh3");
 
   const button4 = document.createElement("button");
   button4.innerHTML = "ORANGE - ERI_Transect_Point_Pivoted.min.json";
   button4.onclick = () => {
     initInstancedMesh("mesh4", data4, "orange");
   };
+  addSliders("mesh4");
 
   const button5 = document.createElement("button");
   button5.innerHTML = "PURPLE - MASW_Full_Pivoted.min.json";
@@ -268,10 +333,15 @@ function addButtons() {
   };
 
   buttonContainer.appendChild(button1);
+  buttonContainer.appendChild(addSliders("mesh1"));
   buttonContainer.appendChild(button2);
+  buttonContainer.appendChild(addSliders("mesh2"));
   buttonContainer.appendChild(button3);
+  buttonContainer.appendChild(addSliders("mesh3"));
   buttonContainer.appendChild(button4);
+  buttonContainer.appendChild(addSliders("mesh4"));
   buttonContainer.appendChild(button5);
+  buttonContainer.appendChild(addSliders("mesh5"));
   buttonContainer.appendChild(clearButton);
   const totalPoints = document.createElement("div");
   totalPoints.innerText = `Total Points: ${
@@ -280,10 +350,44 @@ function addButtons() {
   buttonContainer.appendChild(totalPoints);
 }
 
+function addSliders(meshName: string) {
+  // five sliders to change the opacity of the meshes
 
-console.log(scene);
+  const slider = document.createElement("input");
+  slider.id = "slider_"+meshName;
+  slider.type = "range";
+  slider.min = "0";
+  slider.max = "1";
+  slider.step = "0.01";
+  slider.value = ''+OPACITY;
+  slider.oninput = (e) => {
+    const opacity = e.target.value;
+    const mesh = scene.children.find((child) => child.name === meshName);
+    if (mesh) {
+      (mesh as THREE.InstancedMesh).material.opacity = Number(opacity);
+      (mesh as THREE.InstancedMesh).material.transparent = true;
+      renderer.render(scene, camera);
+    }
+  };
+  return slider;
+}
+
+function preAddInstancedMesh() {
+  initInstancedMesh("mesh1", data, "blue");
+  initInstancedMesh("mesh2", data2, "green");
+  initInstancedMesh("mesh3", data3, "yellow");
+  initInstancedMesh("mesh4", data4, "orange");
+  initInstancedMesh("mesh5", data5, "purple");
+}
+
+
 addButtons();
+addDebugger();
+loadGltf();
+preAddInstancedMesh();
 // sbSolution();
+
+
 
 /**
  *
